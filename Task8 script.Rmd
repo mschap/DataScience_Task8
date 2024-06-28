@@ -1,0 +1,373 @@
+---
+title: "Task 8"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+editor_options: 
+  markdown: 
+    wrap: sentence
+---
+
+# Prerequisites
+
+## Import libraries
+
+```{r}
+library(readr)
+library(dplyr)
+library(car)
+library(randomForest)
+library(ggplot2)
+```
+
+## Import dataset
+
+```{r}
+url <- "https://raw.githubusercontent.com/WHPAN0108/BHT-DataScience-S24/main/regression/data/Fish.csv"
+
+data <- read.csv(url)
+
+head(data)
+
+
+
+```
+
+# Data Preperation
+Checking the summary and for na-values.
+
+```{r}
+summary(data)
+```
+
+Found at least one line with a weight of 0. Otherwise the dataset looks fine.
+
+```{r}
+# Checking for na-values
+data %>% summarize_all(~ sum(is.na(.)))
+```
+No na-values found.
+
+```{r}
+# deleting line with Weight == 0
+data <- data %>% filter(Weight != 0)
+```
+
+
+# TASK 1
+## 1. Split the dataset randomly into training (70%) and testing (30%) sets. 
+
+```{r}
+# Count the rows
+rows <- nrow(data)
+
+# Get random rownumbers for 30% of the lines
+indices <- sample(1:rows, size = round(0.3 * rows))
+
+# Create test-dataset
+df_test <- data[indices, ]
+
+# Create train-dataset
+df_train <- data[-indices, ]
+```
+
+
+## 2. Apply the following models: Linear Regression and Random Forest 
+### Linear regression
+```{r}
+# Linear regression model with Weight as the dependent variable and all other variables as independent variables
+lm_all <- lm(Weight ~ Species + Length1 + Length2 + Length3 + Height + Width, data = df_train)
+
+# Linear regression model with Weight as the dependent variable and Species + Height + Width as independent variables
+lm_shw <- lm(Weight ~ Species + Height + Width, data = df_train)
+
+# Linear regression model with Weight as the dependent variable and Species + Length1 + Length2 + Length3 as independent variables
+lm_slll <- lm(Weight ~ Species + Length1 + Length2 + Length3, data = df_train)
+
+# Calculation the VIF (Variance Inflation Factor) to assess multicollinearity among predictor variables.
+vif(lm_all)
+vif(lm_shw)
+vif(lm_slll)
+```
+Since using the Length1-3 variables leads to high VIF-values (indicating potential multicollinearity issues), further steps are processed with the lm_all and lm_shw-model for comparison.
+
+### Random Forest
+```{r}
+
+rf_model <- randomForest(Weight ~ ., data = df_train, ntree = 500)
+print(rf_model)
+
+```
+
+## 3. Calculate RMSE (Root Mean Squared Error) and R^2 (Coefficient of Determination) on the test set. 
+
+```{r}
+# Run prediction on test-dataset with lm_all
+pred_lm_all <- predict(lm_all, df_test)
+
+# Run prediction on test-dataset with lm_shw
+pred_lm_shw <- predict(lm_shw, df_test)
+
+# Run prediction on test-dataset with rf_model
+pred_rf <- predict(rf_model, df_test)
+```
+
+
+```{r}
+# Calculate the residuals
+res_lm_all <- df_test$Weight - pred_lm_all
+res_lm_shw <- df_test$Weight - pred_lm_shw
+res_rf <- df_test$Weight - pred_rf
+
+# Calculate RSME (lower values are better, since it indicates that the model's predictions are closer to the actual values)
+# RMSE for lm_all
+rmse_lm_all <- sqrt(mean(res_lm_all^2))
+print(paste("RMSE lm_all:", round(rmse_lm_all, 2)))
+
+# RMSE for lm_shw
+rmse_lm_shw <- sqrt(mean(res_lm_shw^2))
+print(paste("RMSE lm_shw:", round(rmse_lm_shw, 2)))
+
+# RMSE for rf_model
+rmse_rf <- sqrt(mean(res_rf^2))
+print(paste("RMSE rf:", round(rmse_rf, 2)))
+
+
+tss <- sum((df_test$Weight - mean(df_test$Weight))^2)
+rss_lm_all <- sum((df_test$Weight - pred_lm_all)^2)
+rss_lm_shw <- sum((df_test$Weight - pred_lm_shw)^2)
+rss_rf <- sum((df_test$Weight - pred_rf)^2)
+r_sq_lm_all <- 1 - (rss_lm_all / tss)
+r_sq_lm_shw <- 1 - (rss_lm_shw / tss)
+r_sq_rf <- 1 - (rss_rf / tss)
+
+print(paste("R-squared lm_all:", round(r_sq_lm_all, 2)))
+print(paste("R-squared lm_shw:", round(r_sq_lm_shw, 2)))
+print(paste("R-squared rf_model:", round(r_sq_rf, 2)))
+```
+## 4. Visualize the predictions by plotting y_pred vs y_real and compare the performance of the models.
+
+```{r}
+# create data frame for plotting data
+plot_data_all <- data.frame(
+  Index = 1:nrow(df_test),
+  Actual = df_test$Weight,
+  Pred_lm_all = pred_lm_all,
+  Pred_lm_shw = pred_lm_shw,
+  Pred_rf = pred_rf
+)
+
+
+ggplot(plot_data_all, aes(x = Actual, y = Pred_lm_all)) +
+  geom_point(color = "blue") +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red") +
+  labs(title = "Scatter Plot of Actual vs Predicted Weight lm_all-model",
+       x = "Actual Weight",
+       y = "Predicted Weight") +
+  theme_minimal()
+
+ggplot(plot_data_all, aes(x = Actual, y = Pred_lm_shw
+                          )) +
+  geom_point(color = "blue") +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red") +
+  labs(title = "Scatter Plot of Actual vs Predicted Weight lm_shw-model",
+       x = "Actual Weight",
+       y = "Predicted Weight") +
+  theme_minimal()
+
+ggplot(plot_data_all, aes(x = Actual, y = Pred_rf)) +
+  geom_point(color = "blue") +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red") +
+  labs(title = "Scatter Plot of Actual vs Predicted Weight rf_model",
+       x = "Actual Weight",
+       y = "Predicted Weight") +
+  theme_minimal()
+
+ggplot(plot_data_all, aes(x = Actual, y = Predicted)) +
+#  geom_point(aes(y = Actual, color = "Actual")) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "blue") +
+  geom_point(aes(y = Pred_lm_all, color = "lm_all")) +
+  geom_point(aes(y = Pred_lm_shw, color = "lm_shw")) +
+  geom_point(aes(y = Pred_rf, color = "rf")) +
+  labs(title = "Actual vs Predicted Weight (all models)",
+       x = "Actual Weight",
+       y = "Predicted Weight") +
+  scale_color_manual(values = c("Actual" = "blue", "lm_all" = "red", "lm_shw" = "green", "rf" = "purple")) +
+  theme_minimal()
+
+
+```
+
+
+## Provide your opinion on which metric, RMSE or R^2, is more appropriate in this case.
+In my opinion the R^2 values are more appropriate in this case, even though 
+the RMSE value assess the used models in the same way. Using RMSE values the result is more like 
+"lower numbers are better", whereas the R^2 values can only be between 0 and 1. 
+In my opinion this leads to better decisions on whether a used model is good or not.
+
+
+# TASK 2
+## Change the training-test split to ensure that each species has 70% of its samples in the training set and 30% in the test set.
+
+```{r}
+# Initialize empty data frames for test and training data
+z2_df_test <- data.frame()
+z2_df_train <- data.frame()
+
+# get all species
+z2_species <- data %>% select(Species) %>% distinct()
+
+# loop through species. For each species get random 30% of the lines for testing and the other 70% for training.
+for (val in z2_species$Species) {
+  #print(val)
+  z2_os <- data %>% filter(Species == val)
+  z2_n = nrow(z2_os)
+  z2_indices_test <- sample(1:z2_n, size = round(0.3 * z2_n))
+  z2_df_test <- rbind(z2_df_test, z2_os[z2_indices_test, ]) 
+  z2_df_train <- rbind(z2_df_train, z2_os[-z2_indices_test, ]) 
+}
+```
+
+
+
+## Repeat steps 2, 3, 4, from Task 1.
+### 2. Apply the following models: Linear Regression and Random Forest 
+
+#### Linear regression
+```{r}
+# Linear regression model with Weight as the dependent variable and all other variables as independent variables
+z2_lm_all <- lm(Weight ~ Species + Length1 + Length2 + Length3 + Height + Width, data = z2_df_train)
+
+# Linear regression model with Weight as the dependent variable and Species + Height + Width as independent variables
+z2_lm_shw <- lm(Weight ~ Species + Height + Width, data = z2_df_train)
+
+# Linear regression model with Weight as the dependent variable and Species + Length1 + Length2 + Length3 as independent variables
+z2_lm_slll <- lm(Weight ~ Species + Length1 + Length2 + Length3, data = z2_df_train)
+
+```
+
+#### Random Forest
+```{r}
+z2_rf_model <- randomForest(Weight ~ ., data = z2_df_train, ntree = 500)
+print(z2_rf_model)
+```
+
+### 3. Calculate RMSE (Root Mean Squared Error) and R^2 (Coefficient of Determination) on the test set. 
+
+
+```{r}
+# Run prediction on test-dataset with lm_all
+z2_pred_lm_all <- predict(z2_lm_all, z2_df_test)
+
+# Run prediction on test-dataset with lm_shw
+z2_pred_lm_shw <- predict(z2_lm_shw, z2_df_test)
+
+# Run prediction on test-dataset with rf_model
+z2_pred_rf <- predict(z2_rf_model, z2_df_test)
+```
+
+
+```{r}
+# Calculate the residuals
+z2_res_lm_all <- z2_df_test$Weight - z2_pred_lm_all
+z2_res_lm_shw <- z2_df_test$Weight - z2_pred_lm_shw
+z2_res_rf <- z2_df_test$Weight - z2_pred_rf
+
+# Calculate RSME (lower values are better, since it indicates that the model's predictions are closer to the actual values)
+# RMSE for lm_all
+z2_rmse_lm_all <- sqrt(mean(z2_res_lm_all^2))
+print(paste("RMSE z2_lm_all:", round(z2_rmse_lm_all, 2)))
+
+# RMSE for lm_shw
+z2_rmse_lm_shw <- sqrt(mean(z2_res_lm_shw^2))
+print(paste("RMSE z2_lm_shw:", round(z2_rmse_lm_shw, 2)))
+
+# RMSE for rf_model
+z2_rmse_rf <- sqrt(mean(z2_res_rf^2))
+print(paste("RMSE z2_rf:", round(z2_rmse_rf, 2)))
+
+
+z2_tss <- sum((z2_df_test$Weight - mean(z2_df_test$Weight))^2)
+z2_rss_lm_all <- sum((z2_df_test$Weight - z2_pred_lm_all)^2)
+z2_rss_lm_shw <- sum((z2_df_test$Weight - z2_pred_lm_shw)^2)
+z2_rss_rf <- sum((z2_df_test$Weight - z2_pred_rf)^2)
+z2_r_sq_lm_all <- 1 - (z2_rss_lm_all / z2_tss)
+z2_r_sq_lm_shw <- 1 - (z2_rss_lm_shw / z2_tss)
+z2_r_sq_rf <- 1 - (z2_rss_rf / z2_tss)
+
+print(paste("R-squared z2_lm_all:", round(z2_r_sq_lm_all, 2)))
+print(paste("R-squared z2_lm_shw:", round(z2_r_sq_lm_shw, 2)))
+print(paste("R-squared z2_rf_model:", round(z2_r_sq_rf, 2)))
+```
+
+### 4. Visualize the predictions by plotting y_pred vs y_real and compare the performance of the models.
+
+```{r}
+# create data frame for plotting data
+z2_plot_data_all <- data.frame(
+  Index = 1:nrow(z2_df_test),
+  Actual = z2_df_test$Weight,
+  Pred_lm_all = z2_pred_lm_all,
+  Pred_lm_shw = z2_pred_lm_shw,
+  Pred_rf = z2_pred_rf
+)
+
+
+ggplot(z2_plot_data_all, aes(x = Actual, y = Pred_lm_all)) +
+  geom_point(color = "blue") +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red") +
+  labs(title = "Scatter Plot of Actual vs Predicted Weight z2_lm_all-model",
+       x = "Actual Weight",
+       y = "Predicted Weight") +
+  theme_minimal()
+
+ggplot(z2_plot_data_all, aes(x = Actual, y = Pred_lm_shw
+                          )) +
+  geom_point(color = "blue") +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red") +
+  labs(title = "Scatter Plot of Actual vs Predicted Weight z2_lm_shw-model",
+       x = "Actual Weight",
+       y = "Predicted Weight") +
+  theme_minimal()
+
+ggplot(z2_plot_data_all, aes(x = Actual, y = Pred_rf)) +
+  geom_point(color = "blue") +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red") +
+  labs(title = "Scatter Plot of Actual vs Predicted Weight z2_rf_model",
+       x = "Actual Weight",
+       y = "Predicted Weight") +
+  theme_minimal()
+
+ggplot(z2_plot_data_all, aes(x = Actual, y = Predicted)) +
+#  geom_point(aes(y = Actual, color = "Actual")) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "blue") +
+  geom_point(aes(y = Pred_lm_all, color = "lm_all")) +
+  geom_point(aes(y = Pred_lm_shw, color = "lm_shw")) +
+  geom_point(aes(y = Pred_rf, color = "rf")) +
+  labs(title = "Actual vs Predicted Weight (all models)",
+       x = "Actual Weight",
+       y = "Predicted Weight") +
+  scale_color_manual(values = c("Actual" = "blue", "lm_all" = "red", "lm_shw" = "green", "rf" = "purple")) +
+  theme_minimal()
+
+```
+
+# Comparison
+## Compare the results obtained from Task 1 and Task 2.
+In case of RMSE and R^2 values there aren't big differences between Task 1 and Task 2.
+Running both tasks several times, it seems like the results from Task 1 are slightly better than from Task 2.
+
+Comparing the linear model and random forest model, than in both cases you get the better results when using random forest model for predicting. 
+
+# Extra Point
+## point out which parameters can be adjusted in this exercise to improve model performance. (dont need to run analysis again)
+In case of linear regression you can remove irrelevant features or do a correlation analysis beforehand, to remove highly correlated features. I tried this by calculating the VIF in Task 1.2, to compare the linear regression model using all features vs. using only some features with lower VIF values. Regardless of this, the RMSE and R^2 values for the model using all features, happened to better in every run i took.
+
+For the random forest model you can adjust the parameters tree size (Number of trees used in the forest) and mtry (Number of random variables used in each tree) which can affect the result.
+
+
+
+
+
+
